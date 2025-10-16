@@ -1,306 +1,330 @@
-import { translate } from './i18nHelpers.js';
-import { state, getCurrentPageState } from '../state/index.js';
-import { getStorageItem, setStorageItem } from './storageHelpers.js';
-import { NODE_TYPE_ICONS, DEFAULT_NODE_COLOR } from './constants.js';
-import { eventManager } from './EventManager.js';
+import { translate } from "./i18nHelpers.js";
+import { state, getCurrentPageState } from "../state/index.js";
+import { getStorageItem, setStorageItem } from "./storageHelpers.js";
+import { NODE_TYPE_ICONS, DEFAULT_NODE_COLOR } from "./constants.js";
+import { eventManager } from "./EventManager.js";
 
-/**
- * Utility function to copy text to clipboard with fallback for older browsers
- * @param {string} text - The text to copy to clipboard
- * @param {string} successMessage - Optional success message to show in toast
- * @returns {Promise<boolean>} - Promise that resolves to true if copy was successful
-/**
- * Utility function to copy text to clipboard with fallback for older browsers
- * @param {string} text - The text to copy to clipboard
- * @param {string} successMessage - Optional success message to show in toast
- * @returns {Promise<boolean>} - Promise that resolves to true if copy was successful
- */
 export async function copyToClipboard(text, successMessage = null) {
-    const defaultSuccessMessage = successMessage || translate('uiHelpers.clipboard.copied', {}, 'Copied to clipboard');
-    
-    try {
-        // Modern clipboard API
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(text);
-        } else {
-            // Fallback for older browsers
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'absolute';
-            textarea.style.left = '-99999px';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-        }
-        
-        if (defaultSuccessMessage) {
-            showToast('uiHelpers.clipboard.copied', {}, 'success');
-        }
-        return true;
-    } catch (err) {
-        console.error('Copy failed:', err);
-        showToast('uiHelpers.clipboard.copyFailed', {}, 'error');
-        return false;
+  const defaultSuccessMessage =
+    successMessage ||
+    translate("uiHelpers.clipboard.copied", {}, "Copied to clipboard");
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "absolute";
+      textarea.style.left = "-99999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
     }
+
+    if (defaultSuccessMessage) {
+      showToast("uiHelpers.clipboard.copied", {}, "success");
+    }
+    return true;
+  } catch (err) {
+    console.error("Copy failed:", err);
+    showToast("uiHelpers.clipboard.copyFailed", {}, "error");
+    return false;
+  }
 }
 
-export function showToast(key, params = {}, type = 'info') {
-    const message = translate(key, params);
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    
-    // Get or create toast container
-    let toastContainer = document.querySelector('.toast-container');
-    if (!toastContainer) {
-        toastContainer = document.createElement('div');
-        toastContainer.className = 'toast-container';
-        document.body.append(toastContainer);
+export function showToast(key, params = {}, type = "info") {
+  const message = translate(key, params);
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+
+  let toastContainer = document.querySelector(".toast-container");
+  if (!toastContainer) {
+    toastContainer = document.createElement("div");
+    toastContainer.className = "toast-container";
+    document.body.append(toastContainer);
+  }
+
+  toastContainer.append(toast);
+
+  const existingToasts = Array.from(toastContainer.querySelectorAll(".toast"));
+  const toastIndex = existingToasts.indexOf(toast);
+  const topOffset = 20;
+  const spacing = 10;
+
+  toast.style.top = `${
+    topOffset + toastIndex * (toast.offsetHeight || 60 + spacing)
+  }px`;
+
+  requestAnimationFrame(() => {
+    toast.classList.add("show");
+
+    let timeout = 2000;
+    if (type === "warning" || type === "error") {
+      timeout = 5000;
     }
-    
-    toastContainer.append(toast);
 
-    // Calculate vertical position for stacked toasts
-    const existingToasts = Array.from(toastContainer.querySelectorAll('.toast'));
-    const toastIndex = existingToasts.indexOf(toast);
-    const topOffset = 20; // Base offset from top
-    const spacing = 10; // Space between toasts
-    
-    // Set position based on existing toasts
-    toast.style.top = `${topOffset + (toastIndex * (toast.offsetHeight || 60 + spacing))}px`;
+    setTimeout(() => {
+      toast.classList.remove("show");
+      toast.addEventListener("transitionend", () => {
+        toast.remove();
 
-    requestAnimationFrame(() => {
-        toast.classList.add('show');
-        
-        // Set timeout based on type
-        let timeout = 2000; // Default (info)
-        if (type === 'warning' || type === 'error') {
-            timeout = 5000;
+        if (toastContainer) {
+          const remainingToasts = Array.from(
+            toastContainer.querySelectorAll(".toast")
+          );
+          remainingToasts.forEach((t, index) => {
+            t.style.top = `${
+              topOffset + index * (t.offsetHeight || 60 + spacing)
+            }px`;
+          });
+
+          if (remainingToasts.length === 0) {
+            toastContainer.remove();
+          }
         }
-        
-        setTimeout(() => {
-            toast.classList.remove('show');
-            toast.addEventListener('transitionend', () => {
-                toast.remove();
-                
-                // Reposition remaining toasts
-                if (toastContainer) {
-                    const remainingToasts = Array.from(toastContainer.querySelectorAll('.toast'));
-                    remainingToasts.forEach((t, index) => {
-                        t.style.top = `${topOffset + (index * (t.offsetHeight || 60 + spacing))}px`;
-                    });
-                    
-                    // Remove container if empty
-                    if (remainingToasts.length === 0) {
-                        toastContainer.remove();
-                    }
-                }
-            });
-        }, timeout);
-    });
+      });
+    }, timeout);
+  });
 }
 
 export function restoreFolderFilter() {
-    const activeFolder = getStorageItem('activeFolder');
-    const folderTag = activeFolder && document.querySelector(`.tag[data-folder="${activeFolder}"]`);
-    if (folderTag) {
-        folderTag.classList.add('active');
-        filterByFolder(activeFolder);
-    }
+  const activeFolder = getStorageItem("activeFolder");
+  const folderTag =
+    activeFolder &&
+    document.querySelector(`.tag[data-folder="${activeFolder}"]`);
+  if (folderTag) {
+    folderTag.classList.add("active");
+    filterByFolder(activeFolder);
+  }
 }
 
+let isThemeForced = false;
+
 export function initTheme() {
-    const savedTheme = getStorageItem('theme') || 'auto';
-    applyTheme(savedTheme);
-    
-    // Update theme when system preference changes (for 'auto' mode)
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        const currentTheme = getStorageItem('theme') || 'auto';
-        if (currentTheme === 'auto') {
-            applyTheme('auto');
+  const forcedTheme = getStorageItem("forced_theme");
+  const savedTheme = getStorageItem("theme") || "auto";
+
+  if (forcedTheme) {
+    applyTheme(forcedTheme, true);
+  } else {
+    applyTheme(savedTheme, false);
+  }
+
+  window
+    .matchMedia("(prefers-color-scheme: dark)")
+    .addEventListener("change", () => {
+      if (!isThemeForced) {
+        const currentTheme = getStorageItem("theme") || "auto";
+        if (currentTheme === "auto") {
+          applyTheme("auto", false);
         }
+      }
     });
 }
 
 export function toggleTheme() {
-    const currentTheme = getStorageItem('theme') || 'auto';
-    let newTheme;
-    
-    if (currentTheme === 'light') {
-        newTheme = 'dark';
-    } else {
-        newTheme = 'light';
-    }
-    
-    setStorageItem('theme', newTheme);
-    applyTheme(newTheme);
-    
-    // Force a repaint to ensure theme changes are applied immediately
-    document.body.style.display = 'none';
-    document.body.offsetHeight; // Trigger a reflow
-    document.body.style.display = '';
-    
-    return newTheme;
+  if (isThemeForced) {
+    return getStorageItem("theme") || "auto";
+  }
+
+  const currentTheme = getStorageItem("theme") || "auto";
+  let newTheme;
+
+  if (currentTheme === "light") {
+    newTheme = "dark";
+  } else if (currentTheme === "dark") {
+    newTheme = "light";
+  } else {
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+    newTheme = prefersDark ? "light" : "dark";
+  }
+
+  setStorageItem("theme", newTheme);
+  applyTheme(newTheme, false);
+
+  return newTheme;
 }
 
-// Add a new helper function to apply the theme
-function applyTheme(theme) {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const htmlElement = document.documentElement;
-    
-    // Remove any existing theme attributes
-    htmlElement.removeAttribute('data-theme');
-    
-    // Apply the appropriate theme
-    if (theme === 'dark' || (theme === 'auto' && prefersDark)) {
-        htmlElement.setAttribute('data-theme', 'dark');
-        document.body.dataset.theme = 'dark';
-    } else {
-        htmlElement.setAttribute('data-theme', 'light');
-        document.body.dataset.theme = 'light';
-    }
-    
-    // Update the theme-toggle icon state
-    updateThemeToggleIcons(theme);
+export function setForcedTheme(theme) {
+  isThemeForced = true;
+  setStorageItem("forced_theme", theme);
+  setStorageItem("theme", theme);
+  applyTheme(theme, true);
 }
 
-// New function to update theme toggle icons
+export function clearForcedTheme() {
+  isThemeForced = false;
+  setStorageItem("forced_theme", null);
+}
+
+function applyTheme(theme, isForced = false) {
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const htmlElement = document.documentElement;
+  const bodyElement = document.body;
+
+  htmlElement.removeAttribute("data-theme");
+  bodyElement.removeAttribute("data-theme");
+
+  bodyElement.classList.remove("dark-theme", "light-theme", "dark", "light");
+
+  let actualTheme = theme;
+
+  if (isForced) {
+    if (theme === "dark") {
+      actualTheme = "dark";
+    } else {
+      actualTheme = "light";
+    }
+  } else if (theme === "auto") {
+    actualTheme = prefersDark ? "dark" : "light";
+  }
+
+  if (actualTheme === "dark") {
+    htmlElement.setAttribute("data-theme", "dark");
+    bodyElement.setAttribute("data-theme", "dark");
+    bodyElement.classList.add("dark-theme", "dark");
+  } else {
+    htmlElement.setAttribute("data-theme", "light");
+    bodyElement.setAttribute("data-theme", "light");
+    bodyElement.classList.add("light-theme", "light");
+  }
+
+  updateThemeToggleIcons(theme);
+}
+
 function updateThemeToggleIcons(theme) {
-    const themeToggle = document.querySelector('.theme-toggle');
-    if (!themeToggle) return;
-    
-    // Remove any existing active classes
-    themeToggle.classList.remove('theme-light', 'theme-dark', 'theme-auto');
-    
-    // Add the appropriate class based on current theme
-    themeToggle.classList.add(`theme-${theme}`);
+  const themeToggle = document.querySelector(".theme-toggle");
+  if (!themeToggle) return;
+
+  themeToggle.classList.remove("theme-light", "theme-dark", "theme-auto");
+
+  themeToggle.classList.add(`theme-${theme}`);
+
+  const newTitle =
+    theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
+  themeToggle.title = newTitle;
 }
 
 function filterByFolder(folderPath) {
-    document.querySelectorAll('.model-card').forEach(card => {
-        card.style.display = card.dataset.folder === folderPath ? '' : 'none';
-    });
+  document.querySelectorAll(".model-card").forEach((card) => {
+    card.style.display = card.dataset.folder === folderPath ? "" : "none";
+  });
 }
 
 export function openCivitai(filePath) {
-    const loraCard = document.querySelector(`.model-card[data-filepath="${filePath}"]`);
-    if (!loraCard) return;
-    
-    const metaData = JSON.parse(loraCard.dataset.meta);
-    const civitaiId = metaData.modelId;
-    const versionId = metaData.id;
-    
-    if (civitaiId) {
-        let url = `https://civitai.com/models/${civitaiId}`;
-        if (versionId) {
-            url += `?modelVersionId=${versionId}`;
-        }
-        window.open(url, '_blank');
-    } else {
-        // 如果没有ID，尝试使用名称搜索
-        const modelName = loraCard.dataset.name;
-        window.open(`https://civitai.com/models?query=${encodeURIComponent(modelName)}`, '_blank');
+  const loraCard = document.querySelector(
+    `.model-card[data-filepath="${filePath}"]`
+  );
+  if (!loraCard) return;
+
+  const metaData = JSON.parse(loraCard.dataset.meta);
+  const civitaiId = metaData.modelId;
+  const versionId = metaData.id;
+
+  if (civitaiId) {
+    let url = `https://civitai.com/models/${civitaiId}`;
+    if (versionId) {
+      url += `?modelVersionId=${versionId}`;
     }
+    window.open(url, "_blank");
+  } else {
+    const modelName = loraCard.dataset.name;
+    window.open(
+      `https://civitai.com/models?query=${encodeURIComponent(modelName)}`,
+      "_blank"
+    );
+  }
 }
 
-/**
- * Dynamically positions the search options panel and filter panel
- * based on the current layout and folder tags container height
- */
 export function updatePanelPositions() {
-    const searchOptionsPanel = document.getElementById('searchOptionsPanel');
-    const filterPanel = document.getElementById('filterPanel');
-    
-    if (!searchOptionsPanel && !filterPanel) return;
-    
-    // Get the header element
-    const header = document.querySelector('.app-header');
-    if (!header) return;
-    
-    // Calculate the position based on the bottom of the header
-    const headerRect = header.getBoundingClientRect();
-    const topPosition = headerRect.bottom + 5; // Add 5px padding
-    
-    // Set the positions
+  const searchOptionsPanel = document.getElementById("searchOptionsPanel");
+  const filterPanel = document.getElementById("filterPanel");
+
+  if (!searchOptionsPanel && !filterPanel) return;
+
+  const header = document.querySelector(".app-header");
+  if (!header) return;
+
+  const headerRect = header.getBoundingClientRect();
+  const topPosition = headerRect.bottom + 5;
+
+  if (searchOptionsPanel) {
+    searchOptionsPanel.style.top = `${topPosition}px`;
+  }
+
+  if (filterPanel) {
+    filterPanel.style.top = `${topPosition}px`;
+  }
+
+  const searchContainer = document.querySelector(".header-search");
+  if (searchContainer) {
+    const searchRect = searchContainer.getBoundingClientRect();
+
     if (searchOptionsPanel) {
-      searchOptionsPanel.style.top = `${topPosition}px`;
+      searchOptionsPanel.style.right = `${
+        window.innerWidth - searchRect.right
+      }px`;
     }
-    
+
     if (filterPanel) {
-      filterPanel.style.top = `${topPosition}px`;
-    }
-    
-    // Adjust panel horizontal position based on the search container
-    const searchContainer = document.querySelector('.header-search');
-    if (searchContainer) {
-      const searchRect = searchContainer.getBoundingClientRect();
-      
-      // Position the search options panel aligned with the search container
-      if (searchOptionsPanel) {
-        searchOptionsPanel.style.right = `${window.innerWidth - searchRect.right}px`;
-      }
-      
-      // Position the filter panel aligned with the filter button
-      if (filterPanel) {
-        const filterButton = document.getElementById('filterButton');
-        if (filterButton) {
-          const filterRect = filterButton.getBoundingClientRect();
-          filterPanel.style.right = `${window.innerWidth - filterRect.right}px`;
-        }
+      const filterButton = document.getElementById("filterButton");
+      if (filterButton) {
+        const filterRect = filterButton.getBoundingClientRect();
+        filterPanel.style.right = `${window.innerWidth - filterRect.right}px`;
       }
     }
+  }
 }
 
 export function initBackToTop() {
-    const button = document.getElementById('backToTopBtn');
-    if (!button) return;
+  const button = document.getElementById("backToTopBtn");
+  if (!button) return;
 
-    // Get the scrollable container
-    const scrollContainer = document.querySelector('.page-content');
-    
-    // Show/hide button based on scroll position
-    const toggleBackToTop = () => {
-        const scrollThreshold = window.innerHeight * 0.3;
-        if (scrollContainer.scrollTop > scrollThreshold) {
-            button.classList.add('visible');
-        } else {
-            button.classList.remove('visible');
-        }
-    };
+  const scrollContainer = document.querySelector(".page-content");
 
-    // Smooth scroll to top
-    button.addEventListener('click', () => {
-        scrollContainer.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        });
+  const toggleBackToTop = () => {
+    const scrollThreshold = window.innerHeight * 0.3;
+    if (scrollContainer.scrollTop > scrollThreshold) {
+      button.classList.add("visible");
+    } else {
+      button.classList.remove("visible");
+    }
+  };
+
+  button.addEventListener("click", () => {
+    scrollContainer.scrollTo({
+      top: 0,
+      behavior: "smooth",
     });
+  });
 
-    // Listen for scroll events on the scrollable container
-    scrollContainer.addEventListener('scroll', toggleBackToTop);
-    
-    // Initial check
-    toggleBackToTop();
+  scrollContainer.addEventListener("scroll", toggleBackToTop);
+
+  toggleBackToTop();
 }
 
 export function getNSFWLevelName(level) {
-    if (level === 0) return 'Unknown';
-    if (level >= 32) return 'Blocked';
-    if (level >= 16) return 'XXX';
-    if (level >= 8) return 'X';
-    if (level >= 4) return 'R';
-    if (level >= 2) return 'PG13';
-    if (level >= 1) return 'PG';
-    return 'Unknown';
+  if (level === 0) return "Unknown";
+  if (level >= 32) return "Blocked";
+  if (level >= 16) return "XXX";
+  if (level >= 8) return "X";
+  if (level >= 4) return "R";
+  if (level >= 2) return "PG13";
+  if (level >= 1) return "PG";
+  return "Unknown";
 }
 
 function parseUsageTipNumber(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const parsed = parseFloat(value);
     if (Number.isFinite(parsed)) {
       return parsed;
@@ -324,7 +348,8 @@ export function getLoraStrengthsFromUsageTips(usageTips = {}) {
 }
 
 export function buildLoraSyntax(fileName, usageTips = {}) {
-  const { strength, hasStrength, clipStrength, hasClipStrength } = getLoraStrengthsFromUsageTips(usageTips);
+  const { strength, hasStrength, clipStrength, hasClipStrength } =
+    getLoraStrengthsFromUsageTips(usageTips);
 
   if (hasClipStrength) {
     const modelStrength = hasStrength ? strength : 1;
@@ -338,16 +363,18 @@ export function copyLoraSyntax(card) {
   const usageTips = JSON.parse(card.dataset.usage_tips || "{}");
   const baseSyntax = buildLoraSyntax(card.dataset.file_name, usageTips);
 
-  // Check if trigger words should be included
   const includeTriggerWords = state.global.settings.include_trigger_words;
 
   if (!includeTriggerWords) {
-    const message = translate('uiHelpers.lora.syntaxCopied', {}, 'LoRA syntax copied to clipboard');
+    const message = translate(
+      "uiHelpers.lora.syntaxCopied",
+      {},
+      "LoRA syntax copied to clipboard"
+    );
     copyToClipboard(baseSyntax, message);
     return;
   }
 
-  // Get trigger words from metadata
   const meta = card.dataset.meta ? JSON.parse(card.dataset.meta) : null;
   const trainedWords = meta?.trainedWords;
 
@@ -356,7 +383,11 @@ export function copyLoraSyntax(card) {
     !Array.isArray(trainedWords) ||
     trainedWords.length === 0
   ) {
-    const message = translate('uiHelpers.lora.syntaxCopiedNoTriggerWords', {}, 'LoRA syntax copied to clipboard (no trigger words found)');
+    const message = translate(
+      "uiHelpers.lora.syntaxCopiedNoTriggerWords",
+      {},
+      "LoRA syntax copied to clipboard (no trigger words found)"
+    );
     copyToClipboard(baseSyntax, message);
     return;
   }
@@ -364,7 +395,6 @@ export function copyLoraSyntax(card) {
   let finalSyntax = baseSyntax;
 
   if (trainedWords.length === 1) {
-    // Single group: append trigger words to the same line
     const triggers = trainedWords[0]
       .split(",")
       .map((word) => word.trim())
@@ -372,10 +402,13 @@ export function copyLoraSyntax(card) {
     if (triggers.length > 0) {
       finalSyntax = `${baseSyntax}, ${triggers.join(", ")}`;
     }
-    const message = translate('uiHelpers.lora.syntaxCopiedWithTriggerWords', {}, 'LoRA syntax with trigger words copied to clipboard');
+    const message = translate(
+      "uiHelpers.lora.syntaxCopiedWithTriggerWords",
+      {},
+      "LoRA syntax with trigger words copied to clipboard"
+    );
     copyToClipboard(finalSyntax, message);
   } else {
-    // Multiple groups: format with separators
     const groups = trainedWords
       .map((group) => {
         const triggers = group
@@ -387,72 +420,68 @@ export function copyLoraSyntax(card) {
       .filter((group) => group);
 
     if (groups.length > 0) {
-      // Use separator between all groups except the first
       finalSyntax = baseSyntax + ", " + groups[0];
       for (let i = 1; i < groups.length; i++) {
         finalSyntax += `\n${"-".repeat(17)}\n${groups[i]}`;
       }
     }
-    const message = translate('uiHelpers.lora.syntaxCopiedWithTriggerWordGroups', {}, 'LoRA syntax with trigger word groups copied to clipboard');
+    const message = translate(
+      "uiHelpers.lora.syntaxCopiedWithTriggerWordGroups",
+      {},
+      "LoRA syntax with trigger word groups copied to clipboard"
+    );
     copyToClipboard(finalSyntax, message);
   }
 }
 
-/**
- * Sends LoRA syntax to the active ComfyUI workflow
- * @param {string} loraSyntax - The LoRA syntax to send
- * @param {boolean} replaceMode - Whether to replace existing LoRAs (true) or append (false)
- * @param {string} syntaxType - The type of syntax ('lora' or 'recipe')
- * @returns {Promise<boolean>} - Whether the operation was successful
- */
-export async function sendLoraToWorkflow(loraSyntax, replaceMode = false, syntaxType = 'lora') {
+export async function sendLoraToWorkflow(
+  loraSyntax,
+  replaceMode = false,
+  syntaxType = "lora"
+) {
   try {
-    // Get registry information from the new endpoint
-    const registryResponse = await fetch('/api/lm/get-registry');
+    const registryResponse = await fetch("/api/lm/get-registry");
     const registryData = await registryResponse.json();
-    
+
     if (!registryData.success) {
-      // Handle specific error cases
-      if (registryData.error === 'Standalone Mode Active') {
-        // Standalone mode - show warning with specific message
-        showToast('toast.general.cannotInteractStandalone', {}, 'warning');
+      if (registryData.error === "Standalone Mode Active") {
+        showToast("toast.general.cannotInteractStandalone", {}, "warning");
         return false;
       } else {
-        // Other errors - show error toast
-        showToast('toast.general.failedWorkflowInfo', {}, 'error');
+        showToast("toast.general.failedWorkflowInfo", {}, "error");
         return false;
       }
     }
-    
-    // Success case - check node count
+
     if (registryData.data.node_count === 0) {
-      // No nodes found - show warning
-      showToast('uiHelpers.workflow.noSupportedNodes', {}, 'warning');
+      showToast("uiHelpers.workflow.noSupportedNodes", {}, "warning");
       return false;
     } else if (registryData.data.node_count > 1) {
-      // Multiple nodes - show selector
-      showNodeSelector(registryData.data.nodes, loraSyntax, replaceMode, syntaxType);
+      showNodeSelector(
+        registryData.data.nodes,
+        loraSyntax,
+        replaceMode,
+        syntaxType
+      );
       return true;
     } else {
-      // Single node - send directly
       const nodes = registryData.data.nodes;
       const nodeId = Object.keys(nodes)[0];
-      return await sendToSpecificNode([nodeId], nodes, loraSyntax, replaceMode, syntaxType);
+      return await sendToSpecificNode(
+        [nodeId],
+        nodes,
+        loraSyntax,
+        replaceMode,
+        syntaxType
+      );
     }
   } catch (error) {
-    console.error('Failed to get registry:', error);
-    showToast('uiHelpers.workflow.communicationFailed', {}, 'error');
+    console.error("Failed to get registry:", error);
+    showToast("uiHelpers.workflow.communicationFailed", {}, "error");
     return false;
   }
 }
 
-/**
- * Send LoRA to specific nodes
- * @param {Array|undefined} nodeIds - Array of node IDs or undefined for desktop mode
- * @param {string} loraSyntax - The LoRA syntax to send
- * @param {boolean} replaceMode - Whether to replace existing LoRAs
- * @param {string} syntaxType - The type of syntax ('lora' or 'recipe')
- */
 function resolveNodeReference(nodeKey, nodesMap) {
   if (!nodeKey) {
     return null;
@@ -466,9 +495,9 @@ function resolveNodeReference(nodeKey, nodesMap) {
     };
   }
 
-  if (typeof nodeKey === 'string' && nodeKey.includes(':')) {
-    const [graphId, ...rest] = nodeKey.split(':');
-    const nodeIdPart = rest.join(':');
+  if (typeof nodeKey === "string" && nodeKey.includes(":")) {
+    const [graphId, ...rest] = nodeKey.split(":");
+    const nodeIdPart = rest.join(":");
     const numericNodeId = Number(nodeIdPart);
     return {
       node_id: Number.isNaN(numericNodeId) ? nodeIdPart : numericNodeId,
@@ -483,12 +512,17 @@ function resolveNodeReference(nodeKey, nodesMap) {
   };
 }
 
-async function sendToSpecificNode(nodeIds, nodesMap, loraSyntax, replaceMode, syntaxType) {
+async function sendToSpecificNode(
+  nodeIds,
+  nodesMap,
+  loraSyntax,
+  replaceMode,
+  syntaxType
+) {
   try {
-    // Call the backend API to update the lora code
     const requestBody = {
       lora_code: loraSyntax,
-      mode: replaceMode ? 'replace' : 'append'
+      mode: replaceMode ? "replace" : "append",
     };
 
     if (Array.isArray(nodeIds)) {
@@ -506,75 +540,67 @@ async function sendToSpecificNode(nodeIds, nodesMap, loraSyntax, replaceMode, sy
       }
     }
 
-    const response = await fetch('/api/lm/update-lora-code', {
-      method: 'POST',
+    const response = await fetch("/api/lm/update-lora-code", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
-    
+
     const result = await response.json();
-    
+
     if (result.success) {
-      // Use different toast messages based on syntax type
-      if (syntaxType === 'recipe') {
-        const messageKey = replaceMode ? 
-          'uiHelpers.workflow.recipeReplaced' :
-          'uiHelpers.workflow.recipeAdded';
-        showToast(messageKey, {}, 'success');
+      if (syntaxType === "recipe") {
+        const messageKey = replaceMode
+          ? "uiHelpers.workflow.recipeReplaced"
+          : "uiHelpers.workflow.recipeAdded";
+        showToast(messageKey, {}, "success");
       } else {
-        const messageKey = replaceMode ? 
-          'uiHelpers.workflow.loraReplaced' :
-          'uiHelpers.workflow.loraAdded';
-        showToast(messageKey, {}, 'success');
+        const messageKey = replaceMode
+          ? "uiHelpers.workflow.loraReplaced"
+          : "uiHelpers.workflow.loraAdded";
+        showToast(messageKey, {}, "success");
       }
       return true;
     } else {
-      const messageKey = syntaxType === 'recipe' ? 
-        'uiHelpers.workflow.recipeFailedToSend' :
-        'uiHelpers.workflow.loraFailedToSend';
-      showToast(messageKey, {}, 'error');
+      const messageKey =
+        syntaxType === "recipe"
+          ? "uiHelpers.workflow.recipeFailedToSend"
+          : "uiHelpers.workflow.loraFailedToSend";
+      showToast(messageKey, {}, "error");
       return false;
     }
   } catch (error) {
-    console.error('Failed to send to workflow:', error);
-    const messageKey = syntaxType === 'recipe' ? 
-      'uiHelpers.workflow.recipeFailedToSend' :
-      'uiHelpers.workflow.loraFailedToSend';
-    showToast(messageKey, {}, 'error');
+    console.error("Failed to send to workflow:", error);
+    const messageKey =
+      syntaxType === "recipe"
+        ? "uiHelpers.workflow.recipeFailedToSend"
+        : "uiHelpers.workflow.loraFailedToSend";
+    showToast(messageKey, {}, "error");
     return false;
   }
 }
 
-// Global variable to track active node selector state
 let nodeSelectorState = {
   isActive: false,
   clickHandler: null,
-  selectorClickHandler: null
+  selectorClickHandler: null,
 };
 
-/**
- * Show node selector popup near mouse position
- * @param {Object} nodes - Registry nodes data
- * @param {string} loraSyntax - The LoRA syntax to send
- * @param {boolean} replaceMode - Whether to replace existing LoRAs
- * @param {string} syntaxType - The type of syntax ('lora' or 'recipe')
- */
 function showNodeSelector(nodes, loraSyntax, replaceMode, syntaxType) {
-  const selector = document.getElementById('nodeSelector');
+  const selector = document.getElementById("nodeSelector");
   if (!selector) return;
-  
-  // Clean up any existing state
-  hideNodeSelector();
-  
-  // Generate node list HTML with icons and proper colors
-  const nodeItems = Object.entries(nodes).map(([nodeKey, node]) => {
-    const iconClass = NODE_TYPE_ICONS[node.type] || 'fas fa-question-circle';
-    const bgColor = node.bgcolor || DEFAULT_NODE_COLOR;
-    const graphLabel = node.graph_name ? ` (${node.graph_name})` : '';
 
-    return `
+  hideNodeSelector();
+
+  const nodeItems = Object.entries(nodes)
+    .map(([nodeKey, node]) => {
+      const iconClass = NODE_TYPE_ICONS[node.type] || "fas fa-question-circle";
+      const bgColor = node.bgcolor || DEFAULT_NODE_COLOR;
+      const graphLabel = node.graph_name ? ` (${node.graph_name})` : "";
+
+      return `
       <div class="node-item" data-node-id="${nodeKey}">
         <div class="node-icon-indicator" style="background-color: ${bgColor}">
           <i class="${iconClass}"></i>
@@ -582,18 +608,27 @@ function showNodeSelector(nodes, loraSyntax, replaceMode, syntaxType) {
         <span>#${node.id}${graphLabel} ${node.title}</span>
       </div>
     `;
-  }).join('');
-  
-  // Add header with action mode indicator
-  const actionType = syntaxType === 'recipe' ? 
-    translate('uiHelpers.nodeSelector.recipe', {}, 'Recipe') :
-    translate('uiHelpers.nodeSelector.lora', {}, 'LoRA');
-  const actionMode = replaceMode ? 
-    translate('uiHelpers.nodeSelector.replace', {}, 'Replace') :
-    translate('uiHelpers.nodeSelector.append', {}, 'Append');
-  const selectTargetNodeText = translate('uiHelpers.nodeSelector.selectTargetNode', {}, 'Select target node');
-  const sendToAllText = translate('uiHelpers.nodeSelector.sendToAll', {}, 'Send to All');
-  
+    })
+    .join("");
+
+  const actionType =
+    syntaxType === "recipe"
+      ? translate("uiHelpers.nodeSelector.recipe", {}, "Recipe")
+      : translate("uiHelpers.nodeSelector.lora", {}, "LoRA");
+  const actionMode = replaceMode
+    ? translate("uiHelpers.nodeSelector.replace", {}, "Replace")
+    : translate("uiHelpers.nodeSelector.append", {}, "Append");
+  const selectTargetNodeText = translate(
+    "uiHelpers.nodeSelector.selectTargetNode",
+    {},
+    "Select target node"
+  );
+  const sendToAllText = translate(
+    "uiHelpers.nodeSelector.sendToAll",
+    {},
+    "Send to All"
+  );
+
   selector.innerHTML = `
     <div class="node-selector-header">
       <span class="selector-action-type">${actionMode} ${actionType}</span>
@@ -607,184 +642,176 @@ function showNodeSelector(nodes, loraSyntax, replaceMode, syntaxType) {
       <span>${sendToAllText}</span>
     </div>
   `;
-  
-  // Position near mouse
+
   positionNearMouse(selector);
-  
-  // Show selector
-  selector.style.display = 'block';
+
+  selector.style.display = "block";
   nodeSelectorState.isActive = true;
-  
-  // Update event manager state
-  eventManager.setState('nodeSelectorActive', true);
-  
-  // Setup event listeners with proper cleanup through event manager
+
+  eventManager.setState("nodeSelectorActive", true);
+
   setupNodeSelectorEvents(selector, nodes, loraSyntax, replaceMode, syntaxType);
 }
 
-/**
- * Setup event listeners for node selector using event manager
- * @param {HTMLElement} selector - The selector element
- * @param {Object} nodes - Registry nodes data
- * @param {string} loraSyntax - The LoRA syntax to send
- * @param {boolean} replaceMode - Whether to replace existing LoRAs
- * @param {string} syntaxType - The type of syntax ('lora' or 'recipe')
- */
-function setupNodeSelectorEvents(selector, nodes, loraSyntax, replaceMode, syntaxType) {
-  // Clean up any existing event listeners
+function setupNodeSelectorEvents(
+  selector,
+  nodes,
+  loraSyntax,
+  replaceMode,
+  syntaxType
+) {
   cleanupNodeSelectorEvents();
-  
-  // Register click outside handler with event manager
-  eventManager.addHandler('click', 'nodeSelector-outside', (e) => {
-    if (!selector.contains(e.target)) {
+
+  eventManager.addHandler(
+    "click",
+    "nodeSelector-outside",
+    (e) => {
+      if (!selector.contains(e.target)) {
+        hideNodeSelector();
+        return true;
+      }
+    },
+    {
+      priority: 200,
+      onlyWhenNodeSelectorActive: true,
+    }
+  );
+
+  eventManager.addHandler(
+    "click",
+    "nodeSelector-selection",
+    async (e) => {
+      const nodeItem = e.target.closest(".node-item");
+      if (!nodeItem) return false;
+
+      e.stopPropagation();
+
+      const action = nodeItem.dataset.action;
+      const nodeId = nodeItem.dataset.nodeId;
+
+      if (action === "send-all") {
+        const allNodeIds = Object.keys(nodes);
+        await sendToSpecificNode(
+          allNodeIds,
+          nodes,
+          loraSyntax,
+          replaceMode,
+          syntaxType
+        );
+      } else if (nodeId) {
+        await sendToSpecificNode(
+          [nodeId],
+          nodes,
+          loraSyntax,
+          replaceMode,
+          syntaxType
+        );
+      }
+
       hideNodeSelector();
-      return true; // Stop propagation
+      return true;
+    },
+    {
+      priority: 150,
+      targetSelector: "#nodeSelector",
+      onlyWhenNodeSelectorActive: true,
     }
-  }, {
-    priority: 200, // High priority to handle before other click handlers
-    onlyWhenNodeSelectorActive: true
-  });
-  
-  // Register node selection handler with event manager  
-  eventManager.addHandler('click', 'nodeSelector-selection', async (e) => {
-    const nodeItem = e.target.closest('.node-item');
-    if (!nodeItem) return false; // Continue with other handlers
-    
-    e.stopPropagation();
-    
-    const action = nodeItem.dataset.action;
-    const nodeId = nodeItem.dataset.nodeId;
-    
-    if (action === 'send-all') {
-      // Send to all nodes
-      const allNodeIds = Object.keys(nodes);
-      await sendToSpecificNode(allNodeIds, nodes, loraSyntax, replaceMode, syntaxType);
-    } else if (nodeId) {
-      // Send to specific node
-      await sendToSpecificNode([nodeId], nodes, loraSyntax, replaceMode, syntaxType);
-    }
-    
-    hideNodeSelector();
-    return true; // Stop propagation
-  }, {
-    priority: 150, // High priority but lower than outside click
-    targetSelector: '#nodeSelector',
-    onlyWhenNodeSelectorActive: true
-  });
+  );
 }
 
-/**
- * Clean up node selector event listeners
- */
 function cleanupNodeSelectorEvents() {
-  // Remove event handlers from event manager
-  eventManager.removeHandler('click', 'nodeSelector-outside');
-  eventManager.removeHandler('click', 'nodeSelector-selection');
-  
-  // Clear legacy references
+  eventManager.removeHandler("click", "nodeSelector-outside");
+  eventManager.removeHandler("click", "nodeSelector-selection");
+
   nodeSelectorState.clickHandler = null;
   nodeSelectorState.selectorClickHandler = null;
 }
 
-/**
- * Hide node selector
- */
 function hideNodeSelector() {
-  const selector = document.getElementById('nodeSelector');
+  const selector = document.getElementById("nodeSelector");
   if (selector) {
-    selector.style.display = 'none';
-    selector.innerHTML = ''; // Clear content to prevent memory leaks
+    selector.style.display = "none";
+    selector.innerHTML = "";
   }
-  
-  // Clean up event listeners
+
   cleanupNodeSelectorEvents();
   nodeSelectorState.isActive = false;
-  
-  // Update event manager state
-  eventManager.setState('nodeSelectorActive', false);
+
+  eventManager.setState("nodeSelectorActive", false);
 }
 
-/**
- * Position element near mouse cursor
- * @param {HTMLElement} element - Element to position
- */
 function positionNearMouse(element) {
-  // Get current mouse position from last mouse event or use default
   const mouseX = window.lastMouseX || window.innerWidth / 2;
   const mouseY = window.lastMouseY || window.innerHeight / 2;
-  
-  // Show element temporarily to get dimensions
-  element.style.visibility = 'hidden';
-  element.style.display = 'block';
-  
+
+  element.style.visibility = "hidden";
+  element.style.display = "block";
+
   const rect = element.getBoundingClientRect();
   const viewportWidth = document.documentElement.clientWidth;
   const viewportHeight = document.documentElement.clientHeight;
-  
-  // Calculate position with offset from mouse
+
   let x = mouseX + 10;
   let y = mouseY + 10;
-  
-  // Ensure element doesn't go offscreen
+
   if (x + rect.width > viewportWidth) {
     x = mouseX - rect.width - 10;
   }
-  
+
   if (y + rect.height > viewportHeight) {
     y = mouseY - rect.height - 10;
   }
-  
-  // Apply position
+
   element.style.left = `${x}px`;
   element.style.top = `${y}px`;
-  element.style.visibility = 'visible';
+  element.style.visibility = "visible";
 }
 
-/**
- * Initialize mouse tracking for positioning elements
- */
 export function initializeMouseTracking() {
-  // Register mouse tracking with event manager
-  eventManager.addHandler('mousemove', 'uiHelpers-mouseTracking', (e) => {
-    window.lastMouseX = e.clientX;
-    window.lastMouseY = e.clientY;
-  }, {
-    priority: 10 // Low priority since this is just tracking
-  });
+  eventManager.addHandler(
+    "mousemove",
+    "uiHelpers-mouseTracking",
+    (e) => {
+      window.lastMouseX = e.clientX;
+      window.lastMouseY = e.clientY;
+    },
+    {
+      priority: 10,
+    }
+  );
 }
 
-// Initialize mouse tracking when module loads
 initializeMouseTracking();
 
-/**
- * Opens the example images folder for a specific model
- * @param {string} modelHash - The SHA256 hash of the model
- */
 export async function openExampleImagesFolder(modelHash) {
   try {
-    const response = await fetch('/api/lm/open-example-images-folder', {
-      method: 'POST',
+    const response = await fetch("/api/lm/open-example-images-folder", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model_hash: modelHash
-      })
+        model_hash: modelHash,
+      }),
     });
-    
+
     const result = await response.json();
-    
+
     if (result.success) {
-      const message = translate('uiHelpers.exampleImages.openingFolder', {}, 'Opening example images folder');
-      showToast('uiHelpers.exampleImages.opened', {}, 'success');
+      const message = translate(
+        "uiHelpers.exampleImages.openingFolder",
+        {},
+        "Opening example images folder"
+      );
+      showToast("uiHelpers.exampleImages.opened", {}, "success");
       return true;
     } else {
-      showToast('uiHelpers.exampleImages.failedToOpen', {}, 'error');
+      showToast("uiHelpers.exampleImages.failedToOpen", {}, "error");
       return false;
     }
   } catch (error) {
-    console.error('Failed to open example images folder:', error);
-    showToast('uiHelpers.exampleImages.failedToOpen', {}, 'error');
+    console.error("Failed to open example images folder:", error);
+    showToast("uiHelpers.exampleImages.failedToOpen", {}, "error");
     return false;
   }
 }

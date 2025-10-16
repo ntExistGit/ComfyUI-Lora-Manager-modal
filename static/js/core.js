@@ -17,6 +17,7 @@ import { onboardingManager } from './managers/OnboardingManager.js';
 import { BulkContextMenu } from './components/ContextMenu/BulkContextMenu.js';
 import { createPageContextMenu, createGlobalContextMenu } from './components/ContextMenu/index.js';
 import { initializeEventManagement } from './utils/eventManagementInit.js';
+import { initThemeSync } from './utils/theme-sync.js';
 
 // Core application class
 export class AppCore {
@@ -58,6 +59,7 @@ export class AppCore {
         // Initialize UI components
         window.headerManager = new HeaderManager();
         initTheme();
+        initThemeSync();
         initBackToTop();
         
         // Initialize the bulk manager and context menu only if not on recipes page
